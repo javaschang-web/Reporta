@@ -60,14 +60,12 @@ export default function UploadPage() {
           .upload(path, file, { upsert: false, contentType: file.type || undefined })
         if (storageError) throw storageError
 
-        const { data: urlData } = supabase.storage.from('uploads').getPublicUrl(path)
-
-        // Create a data_sources row (table must exist)
+        // Store the storage path (not public URL) so we can generate signed URLs later
         const { error: insertError } = await supabase.from('data_sources').insert({
           user_id: userId,
           name: file.name,
           file_type: ext,
-          file_url: urlData.publicUrl,
+          file_url: path,
         })
 
         if (insertError) throw insertError

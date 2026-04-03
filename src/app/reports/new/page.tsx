@@ -92,7 +92,14 @@ export default function NewReportPage() {
         const src = sources.find((s) => s.id === id)!
         setStatus(`Fetching: ${src.name}`)
 
-        const res = await fetch(src.file_url)
+        // Generate a short-lived signed URL from the storage path
+        const { data: signedData, error: signedError } = await supabase.storage
+          .from('uploads')
+          .createSignedUrl(src.file_url, 60)
+        if (signedError || !signedData?.signedUrl)
+          throw new Error(`Failed to get signed URL for ${src.name}`)
+
+        const res = await fetch(signedData.signedUrl)
         if (!res.ok) throw new Error(`Failed to fetch ${src.name}`)
 
         const buf = await res.arrayBuffer()
