@@ -107,112 +107,122 @@ type Lang = 'ko' | 'en'
 
 export default function LandingPage() {
   const [lang, setLang] = useState<Lang>('ko')
-  const { theme, setTheme } = useTheme()
+  const { setTheme } = useTheme()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const t = content[lang]
 
+  // Enforce dark mode for the enterprise app
+  if (typeof window !== 'undefined') {
+    setTheme('dark')
+  }
+
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 transition-colors">
+    <div className="min-h-screen font-sans" style={{ backgroundColor: '#0F1A2E', color: '#E8EDF5' }}>
 
       {/* Nav */}
-      <nav className="max-w-5xl mx-auto px-4 sm:px-6 py-4">
-        <div className="flex items-center justify-between">
-          <span className="text-xl font-bold text-blue-600">Reporta</span>
+      <nav style={{ backgroundColor: '#0F1A2E', borderBottom: '1px solid #243660' }}>
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xl font-bold" style={{ color: '#D4A843' }}>Reporta</span>
 
-          {/* Desktop nav */}
-          <div className="hidden md:flex items-center gap-3">
-            <button
-              onClick={() => setLang(lang === 'ko' ? 'en' : 'ko')}
-              className="text-sm px-3 py-1.5 border rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            >
-              {lang === 'ko' ? 'EN' : '한국어'}
-            </button>
-            <button
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              className="text-sm px-3 py-1.5 border rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            >
-              {theme === 'dark' ? '☀️' : '🌙'}
-            </button>
-            <Link
-              href="/auth/login"
-              className="text-sm text-gray-600 dark:text-gray-400 hover:underline px-2"
-            >
-              {t.nav.login}
-            </Link>
-            <Link
-              href="/auth/signup"
-              className="text-sm bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              {t.nav.signup}
-            </Link>
+            {/* Desktop nav */}
+            <div className="hidden md:flex items-center gap-3">
+              <button
+                onClick={() => setLang(lang === 'ko' ? 'en' : 'ko')}
+                className="text-sm px-3 py-1.5 transition-colors"
+                style={{ color: '#94A3B8', border: '1px solid #243660' }}
+              >
+                {lang === 'ko' ? 'EN' : '한국어'}
+              </button>
+              <Link
+                href="/auth/login"
+                className="text-sm px-2 hover:underline"
+                style={{ color: '#94A3B8' }}
+              >
+                {t.nav.login}
+              </Link>
+              <Link
+                href="/auth/signup"
+                className="text-sm px-4 py-2 font-medium transition-opacity hover:opacity-90"
+                style={{ backgroundColor: '#D4A843', color: '#0F1A2E' }}
+              >
+                {t.nav.signup}
+              </Link>
+            </div>
+
+            {/* Mobile: lang + hamburger */}
+            <div className="flex md:hidden items-center gap-2">
+              <button
+                onClick={() => setLang(lang === 'ko' ? 'en' : 'ko')}
+                className="text-xs px-2 py-1"
+                style={{ color: '#94A3B8', border: '1px solid #243660' }}
+              >
+                {lang === 'ko' ? 'EN' : '한'}
+              </button>
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="p-2"
+                style={{ border: '1px solid #243660', color: '#94A3B8' }}
+                aria-label="Menu"
+              >
+                {mobileMenuOpen ? '✕' : '☰'}
+              </button>
+            </div>
           </div>
 
-          {/* Mobile: theme + lang + hamburger */}
-          <div className="flex md:hidden items-center gap-2">
-            <button
-              onClick={() => setLang(lang === 'ko' ? 'en' : 'ko')}
-              className="text-xs px-2 py-1 border rounded-full"
+          {/* Mobile dropdown menu */}
+          {mobileMenuOpen && (
+            <div
+              className="md:hidden mt-3 p-4 flex flex-col gap-3"
+              style={{ backgroundColor: '#1B2B4B', border: '1px solid #243660' }}
             >
-              {lang === 'ko' ? 'EN' : '한'}
-            </button>
-            <button
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              className="text-sm px-2 py-1 border rounded-full"
-            >
-              {theme === 'dark' ? '☀️' : '🌙'}
-            </button>
-            <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 border rounded-lg"
-              aria-label="Menu"
-            >
-              {mobileMenuOpen ? '✕' : '☰'}
-            </button>
-          </div>
+              <Link
+                href="/auth/login"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-sm py-2"
+                style={{ color: '#94A3B8', borderBottom: '1px solid #243660' }}
+              >
+                {t.nav.login}
+              </Link>
+              <Link
+                href="/auth/signup"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-sm px-4 py-2 text-center font-medium transition-opacity hover:opacity-90"
+                style={{ backgroundColor: '#D4A843', color: '#0F1A2E' }}
+              >
+                {t.nav.signup}
+              </Link>
+            </div>
+          )}
         </div>
-
-        {/* Mobile dropdown menu */}
-        {mobileMenuOpen && (
-          <div className="md:hidden mt-3 border rounded-xl p-4 bg-white dark:bg-gray-900 shadow-lg flex flex-col gap-3">
-            <Link
-              href="/auth/login"
-              onClick={() => setMobileMenuOpen(false)}
-              className="text-sm text-gray-700 dark:text-gray-300 py-2 border-b dark:border-gray-700"
-            >
-              {t.nav.login}
-            </Link>
-            <Link
-              href="/auth/signup"
-              onClick={() => setMobileMenuOpen(false)}
-              className="text-sm bg-blue-600 text-white px-4 py-2 rounded-lg text-center hover:bg-blue-700 transition-colors"
-            >
-              {t.nav.signup}
-            </Link>
-          </div>
-        )}
       </nav>
 
       {/* Hero */}
       <section className="max-w-5xl mx-auto px-4 sm:px-6 pt-14 sm:pt-20 pb-16 sm:pb-24 text-center">
-        <span className="inline-block bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs sm:text-sm font-medium px-3 py-1 rounded-full mb-5 sm:mb-6">
+        <span
+          className="inline-block text-xs sm:text-sm font-medium px-3 py-1 mb-5 sm:mb-6"
+          style={{ border: '1px solid #D4A843', color: '#D4A843' }}
+        >
           {t.hero.badge}
         </span>
-        <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold leading-tight whitespace-pre-line mb-4 sm:mb-6">
+        <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold leading-tight whitespace-pre-line mb-4 sm:mb-6" style={{ color: '#FFFFFF' }}>
           {t.hero.title}
         </h1>
-        <p className="text-base sm:text-lg text-gray-600 dark:text-gray-400 whitespace-pre-line mb-8 sm:mb-10 max-w-2xl mx-auto">
+        <p className="text-base sm:text-lg whitespace-pre-line mb-8 sm:mb-10 max-w-2xl mx-auto" style={{ color: '#94A3B8' }}>
           {t.hero.sub}
         </p>
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
           <Link
             href="/auth/signup"
-            className="w-full sm:w-auto bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors text-center"
+            className="w-full sm:w-auto px-6 py-3 font-medium transition-opacity hover:opacity-90 text-center"
+            style={{ backgroundColor: '#D4A843', color: '#0F1A2E' }}
           >
             {t.hero.cta}
           </Link>
           <Link
             href="/dashboard"
-            className="w-full sm:w-auto border px-6 py-3 rounded-lg font-medium hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors text-center"
+            className="w-full sm:w-auto px-6 py-3 font-medium transition-colors hover:opacity-80 text-center"
+            style={{ border: '1px solid #D4A843', color: '#D4A843', backgroundColor: 'transparent' }}
           >
             {t.hero.demo}
           </Link>
@@ -220,17 +230,20 @@ export default function LandingPage() {
       </section>
 
       {/* Pain points */}
-      <section className="bg-gray-50 dark:bg-gray-900 py-14 sm:py-20">
+      <section className="py-14 sm:py-20" style={{ backgroundColor: '#1B2B4B' }}>
         <div className="max-w-5xl mx-auto px-4 sm:px-6">
-          <h2 className="text-xl sm:text-2xl font-bold text-center mb-8 sm:mb-10">{t.pain.title}</h2>
+          <h2 className="text-xl sm:text-2xl font-bold text-center mb-8 sm:mb-10" style={{ color: '#FFFFFF' }}>
+            {t.pain.title}
+          </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
             {t.pain.items.map((item, i) => (
               <div
                 key={i}
-                className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-xl p-5 sm:p-6"
+                className="p-5 sm:p-6"
+                style={{ backgroundColor: '#0F1A2E', border: '1px solid #243660' }}
               >
                 <div className="text-3xl mb-3">{item.icon}</div>
-                <p className="text-gray-700 dark:text-gray-300 text-sm sm:text-base">{item.text}</p>
+                <p className="text-sm sm:text-base" style={{ color: '#94A3B8' }}>{item.text}</p>
               </div>
             ))}
           </div>
@@ -238,15 +251,21 @@ export default function LandingPage() {
       </section>
 
       {/* Features */}
-      <section className="py-14 sm:py-20">
+      <section className="py-14 sm:py-20" style={{ backgroundColor: '#0F1A2E' }}>
         <div className="max-w-5xl mx-auto px-4 sm:px-6">
-          <h2 className="text-xl sm:text-2xl font-bold text-center mb-8 sm:mb-10">{t.features.title}</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 sm:gap-10">
+          <h2 className="text-xl sm:text-2xl font-bold text-center mb-8 sm:mb-10" style={{ color: '#FFFFFF' }}>
+            {t.features.title}
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
             {t.features.items.map((f, i) => (
-              <div key={i} className="text-center">
-                <div className="text-4xl mb-3 sm:mb-4">{f.icon}</div>
-                <h3 className="font-semibold text-base sm:text-lg mb-2">{f.title}</h3>
-                <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">{f.desc}</p>
+              <div
+                key={i}
+                className="p-5 sm:p-6"
+                style={{ backgroundColor: '#1B2B4B', border: '1px solid #243660' }}
+              >
+                <div className="text-3xl mb-3 sm:mb-4" style={{ color: '#D4A843' }}>{f.icon}</div>
+                <h3 className="font-semibold text-base sm:text-lg mb-2" style={{ color: '#FFFFFF' }}>{f.title}</h3>
+                <p className="text-sm leading-relaxed" style={{ color: '#94A3B8' }}>{f.desc}</p>
               </div>
             ))}
           </div>
@@ -254,14 +273,17 @@ export default function LandingPage() {
       </section>
 
       {/* Target users */}
-      <section className="bg-blue-600 py-12 sm:py-16">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 text-center text-white">
-          <h2 className="text-xl sm:text-2xl font-bold mb-6 sm:mb-8">{t.targets.title}</h2>
+      <section className="py-12 sm:py-16" style={{ backgroundColor: '#1B2B4B' }}>
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 text-center">
+          <h2 className="text-xl sm:text-2xl font-bold mb-6 sm:mb-8" style={{ color: '#FFFFFF' }}>
+            {t.targets.title}
+          </h2>
           <div className="flex flex-wrap justify-center gap-3">
             {t.targets.items.map((item, i) => (
               <span
                 key={i}
-                className="bg-white/20 backdrop-blur px-4 sm:px-5 py-2 rounded-full font-medium text-sm sm:text-base"
+                className="px-4 sm:px-5 py-2 font-medium text-sm sm:text-base"
+                style={{ border: '1px solid #D4A843', color: '#D4A843', backgroundColor: 'transparent' }}
               >
                 {item}
               </span>
@@ -271,13 +293,18 @@ export default function LandingPage() {
       </section>
 
       {/* CTA */}
-      <section className="py-16 sm:py-24 text-center">
+      <section className="py-16 sm:py-24 text-center" style={{ backgroundColor: '#D4A843' }}>
         <div className="max-w-2xl mx-auto px-4 sm:px-6">
-          <h2 className="text-2xl sm:text-3xl font-bold mb-3 sm:mb-4">{t.cta.title}</h2>
-          <p className="text-gray-500 dark:text-gray-400 mb-6 sm:mb-8 text-sm sm:text-base">{t.cta.sub}</p>
+          <h2 className="text-2xl sm:text-3xl font-bold mb-3 sm:mb-4" style={{ color: '#0F1A2E' }}>
+            {t.cta.title}
+          </h2>
+          <p className="mb-6 sm:mb-8 text-sm sm:text-base" style={{ color: '#1B2B4B' }}>
+            {t.cta.sub}
+          </p>
           <Link
             href="/auth/signup"
-            className="inline-block bg-blue-600 text-white px-8 py-3 rounded-lg font-medium text-base sm:text-lg hover:bg-blue-700 transition-colors"
+            className="inline-block px-8 py-3 font-medium text-base sm:text-lg transition-opacity hover:opacity-90"
+            style={{ backgroundColor: '#0F1A2E', color: '#D4A843' }}
           >
             {t.cta.btn}
           </Link>
@@ -285,8 +312,12 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t dark:border-gray-800 py-6 sm:py-8 text-center text-xs sm:text-sm text-gray-400">
-        {t.footer}
+      <footer
+        className="py-6 sm:py-8 text-center text-xs sm:text-sm"
+        style={{ backgroundColor: '#0F1A2E', borderTop: '1px solid #243660', color: '#64748B' }}
+      >
+        <span style={{ color: '#D4A843', fontWeight: 600 }}>Reporta</span>
+        {' '}— {t.footer}
       </footer>
     </div>
   )
