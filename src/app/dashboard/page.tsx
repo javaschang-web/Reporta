@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/client'
+import Sidebar from '@/components/Sidebar'
 
 type DataSource = {
   id: number
@@ -18,6 +19,25 @@ type Report = {
   format: string
   status: string
   created_at: string
+}
+
+const cell: React.CSSProperties = {
+  padding: '9px 14px',
+  fontSize: '12px',
+  borderBottom: '1px solid var(--border)',
+  color: 'var(--foreground)',
+  letterSpacing: '0.01em',
+}
+
+const headCell: React.CSSProperties = {
+  padding: '8px 14px',
+  fontSize: '11px',
+  fontWeight: 600,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  color: 'var(--muted)',
+  background: 'var(--navy-800)',
+  borderBottom: '1px solid var(--border)',
 }
 
 export default function DashboardPage() {
@@ -68,119 +88,274 @@ export default function DashboardPage() {
     router.replace('/auth/login')
   }
 
-  return (
-    <main className="min-h-screen bg-gray-50">
-      <div className="max-w-4xl mx-auto p-6">
-        {/* Header */}
-        <header className="flex items-center justify-between py-4 border-b">
-          <div>
-            <h1 className="text-2xl font-bold text-blue-600">Reporta</h1>
-            <p className="text-sm text-gray-500">{email ?? '…'}</p>
-          </div>
-          <button
-            onClick={logout}
-            className="text-sm border rounded px-3 py-1.5 hover:bg-gray-100"
-          >
-            Logout
-          </button>
-        </header>
+  const lastActivity =
+    sources.length > 0 || reports.length > 0
+      ? new Date(
+          Math.max(
+            ...[...sources.map((s) => +new Date(s.created_at)), ...reports.map((r) => +new Date(r.created_at))]
+          )
+        ).toLocaleDateString()
+      : '—'
 
-        {/* Action Cards */}
-        <div className="mt-6 grid grid-cols-2 gap-4">
+  return (
+    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--background)' }}>
+      <Sidebar email={email} onLogout={logout} activePath="/dashboard" />
+
+      <main style={{ flex: 1, padding: '32px 36px', overflowY: 'auto' }}>
+        {/* Page header */}
+        <div style={{ marginBottom: '28px' }}>
+          <div
+            style={{
+              fontSize: '11px',
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              color: 'var(--amber-500)',
+              marginBottom: '6px',
+            }}
+          >
+            Overview
+          </div>
+          <h1
+            style={{
+              fontSize: '22px',
+              fontWeight: 700,
+              color: 'var(--foreground)',
+              letterSpacing: '-0.02em',
+            }}
+          >
+            Dashboard
+          </h1>
+        </div>
+
+        {/* Stat cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '32px' }}>
+          {[
+            { label: 'Total Uploads', value: loading ? '—' : String(sources.length), sub: 'data sources' },
+            { label: 'Total Reports', value: loading ? '—' : String(reports.length), sub: 'generated' },
+            { label: 'Last Activity', value: loading ? '—' : lastActivity, sub: 'most recent' },
+          ].map((card) => (
+            <div
+              key={card.label}
+              style={{
+                background: 'var(--surface)',
+                border: '1px solid var(--border)',
+                padding: '20px 22px',
+              }}
+            >
+              <div
+                style={{
+                  fontSize: '11px',
+                  letterSpacing: '0.08em',
+                  textTransform: 'uppercase',
+                  color: 'var(--muted)',
+                  marginBottom: '10px',
+                }}
+              >
+                {card.label}
+              </div>
+              <div
+                style={{
+                  fontSize: '28px',
+                  fontWeight: 700,
+                  fontFamily: 'monospace',
+                  color: 'var(--amber-400)',
+                  letterSpacing: '-0.02em',
+                  lineHeight: 1,
+                }}
+              >
+                {card.value}
+              </div>
+              <div style={{ fontSize: '11px', color: 'var(--muted)', marginTop: '6px' }}>{card.sub}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Action cards */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '32px' }}>
           <Link
             href="/upload"
-            className="bg-white border rounded-lg p-5 hover:shadow-md transition-shadow"
+            style={{
+              display: 'block',
+              background: 'var(--surface)',
+              border: '1px solid var(--border)',
+              padding: '20px 22px',
+              textDecoration: 'none',
+              transition: 'border-color 0.15s',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--amber-500)')}
+            onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
           >
-            <div className="text-2xl mb-2">📂</div>
-            <div className="font-semibold">Upload data</div>
-            <div className="text-sm text-gray-500 mt-1">
-              Import CSV/XLSX files from ERP, Bloomberg, etc.
+            <div style={{ fontSize: '11px', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '8px' }}>
+              Action
+            </div>
+            <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--foreground)', marginBottom: '4px' }}>
+              Upload Data
+            </div>
+            <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
+              Import CSV/XLSX from ERP, Bloomberg, etc.
             </div>
           </Link>
           <Link
             href="/reports/new"
-            className="bg-blue-600 text-white border rounded-lg p-5 hover:bg-blue-700 transition-colors"
+            style={{
+              display: 'block',
+              background: 'var(--navy-800)',
+              border: '1px solid var(--amber-500)',
+              padding: '20px 22px',
+              textDecoration: 'none',
+              transition: 'background 0.15s',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(212,168,67,0.1)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--navy-800)')}
           >
-            <div className="text-2xl mb-2">📊</div>
-            <div className="font-semibold">Generate report</div>
-            <div className="text-sm text-blue-100 mt-1">
+            <div style={{ fontSize: '11px', letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--amber-500)', marginBottom: '8px' }}>
+              Primary Action
+            </div>
+            <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--foreground)', marginBottom: '4px' }}>
+              Generate Report
+            </div>
+            <div style={{ fontSize: '12px', color: 'var(--slate-300)' }}>
               Create an Excel report from uploaded data
             </div>
           </Link>
         </div>
 
-        {/* Data sources */}
-        <section className="mt-8">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-gray-800">Recent uploads</h2>
-            <Link href="/upload" className="text-sm text-blue-600 hover:underline">
+        {/* Recent uploads */}
+        <section style={{ marginBottom: '32px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+            <div style={{ fontSize: '13px', fontWeight: 600, letterSpacing: '0.04em', color: 'var(--foreground)' }}>
+              Recent Uploads
+            </div>
+            <Link href="/upload" style={{ fontSize: '11px', color: 'var(--amber-500)', textDecoration: 'none', letterSpacing: '0.04em' }}>
               Upload more →
             </Link>
           </div>
-          {loading ? (
-            <p className="text-sm text-gray-400">Loading…</p>
-          ) : sources.length === 0 ? (
-            <div className="bg-white border rounded-lg p-5 text-sm text-gray-500">
-              No uploads yet.{' '}
-              <Link href="/upload" className="text-blue-600 underline">
-                Upload your first file
-              </Link>
-            </div>
-          ) : (
-            <div className="bg-white border rounded-lg divide-y">
-              {sources.map((s) => (
-                <div key={s.id} className="flex items-center justify-between px-4 py-3">
-                  <div>
-                    <span className="font-medium text-sm">{s.name}</span>
-                    <span className="ml-2 text-xs bg-gray-100 rounded px-1.5 py-0.5 uppercase">
-                      {s.file_type}
-                    </span>
-                  </div>
-                  <span className="text-xs text-gray-400">
-                    {new Date(s.created_at).toLocaleDateString()}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
+
+          <div style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{ ...headCell, textAlign: 'left' }}>File Name</th>
+                  <th style={{ ...headCell, textAlign: 'left' }}>Type</th>
+                  <th style={{ ...headCell, textAlign: 'right' }}>Uploaded</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={3} style={{ ...cell, color: 'var(--muted)', textAlign: 'center', padding: '20px' }}>
+                      Loading…
+                    </td>
+                  </tr>
+                ) : sources.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} style={{ ...cell, color: 'var(--muted)', textAlign: 'center', padding: '20px' }}>
+                      No uploads yet.{' '}
+                      <Link href="/upload" style={{ color: 'var(--amber-500)', textDecoration: 'none' }}>
+                        Upload your first file
+                      </Link>
+                    </td>
+                  </tr>
+                ) : (
+                  sources.map((s, i) => (
+                    <tr key={s.id} style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+                      <td style={{ ...cell, fontWeight: 500 }}>{s.name}</td>
+                      <td style={cell}>
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            padding: '2px 7px',
+                            fontSize: '10px',
+                            fontWeight: 600,
+                            letterSpacing: '0.06em',
+                            textTransform: 'uppercase',
+                            background: s.file_type === 'csv' ? 'rgba(72,187,120,0.15)' : 'rgba(99,179,237,0.15)',
+                            color: s.file_type === 'csv' ? 'var(--green-400)' : 'var(--blue-400)',
+                            border: `1px solid ${s.file_type === 'csv' ? 'rgba(72,187,120,0.3)' : 'rgba(99,179,237,0.3)'}`,
+                          }}
+                        >
+                          {s.file_type}
+                        </span>
+                      </td>
+                      <td style={{ ...cell, textAlign: 'right', fontFamily: 'monospace', color: 'var(--muted)', fontSize: '11px' }}>
+                        {new Date(s.created_at).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </section>
 
-        {/* Reports */}
-        <section className="mt-8">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold text-gray-800">Recent reports</h2>
-            <Link href="/reports/new" className="text-sm text-blue-600 hover:underline">
+        {/* Recent reports */}
+        <section>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+            <div style={{ fontSize: '13px', fontWeight: 600, letterSpacing: '0.04em', color: 'var(--foreground)' }}>
+              Recent Reports
+            </div>
+            <Link href="/reports/new" style={{ fontSize: '11px', color: 'var(--amber-500)', textDecoration: 'none', letterSpacing: '0.04em' }}>
               New report →
             </Link>
           </div>
-          {loading ? (
-            <p className="text-sm text-gray-400">Loading…</p>
-          ) : reports.length === 0 ? (
-            <div className="bg-white border rounded-lg p-5 text-sm text-gray-500">
-              No reports yet.{' '}
-              <Link href="/reports/new" className="text-blue-600 underline">
-                Generate your first report
-              </Link>
-            </div>
-          ) : (
-            <div className="bg-white border rounded-lg divide-y">
-              {reports.map((r) => (
-                <div key={r.id} className="flex items-center justify-between px-4 py-3">
-                  <div>
-                    <span className="font-medium text-sm">{r.title}</span>
-                    <span className="ml-2 text-xs bg-blue-50 text-blue-600 rounded px-1.5 py-0.5 uppercase">
-                      {r.format}
-                    </span>
-                  </div>
-                  <span className="text-xs text-gray-400">
-                    {new Date(r.created_at).toLocaleDateString()}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
+
+          <div style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={{ ...headCell, textAlign: 'left' }}>Report Title</th>
+                  <th style={{ ...headCell, textAlign: 'left' }}>Status</th>
+                  <th style={{ ...headCell, textAlign: 'right' }}>Generated</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={3} style={{ ...cell, color: 'var(--muted)', textAlign: 'center', padding: '20px' }}>
+                      Loading…
+                    </td>
+                  </tr>
+                ) : reports.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} style={{ ...cell, color: 'var(--muted)', textAlign: 'center', padding: '20px' }}>
+                      No reports yet.{' '}
+                      <Link href="/reports/new" style={{ color: 'var(--amber-500)', textDecoration: 'none' }}>
+                        Generate your first report
+                      </Link>
+                    </td>
+                  </tr>
+                ) : (
+                  reports.map((r, i) => (
+                    <tr key={r.id} style={{ background: i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)' }}>
+                      <td style={{ ...cell, fontWeight: 500 }}>{r.title}</td>
+                      <td style={cell}>
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            padding: '2px 7px',
+                            fontSize: '10px',
+                            fontWeight: 600,
+                            letterSpacing: '0.06em',
+                            textTransform: 'uppercase',
+                            background: 'rgba(212,168,67,0.15)',
+                            color: 'var(--amber-400)',
+                            border: '1px solid rgba(212,168,67,0.3)',
+                          }}
+                        >
+                          {r.status}
+                        </span>
+                      </td>
+                      <td style={{ ...cell, textAlign: 'right', fontFamily: 'monospace', color: 'var(--muted)', fontSize: '11px' }}>
+                        {new Date(r.created_at).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </section>
-      </div>
-    </main>
+      </main>
+    </div>
   )
 }

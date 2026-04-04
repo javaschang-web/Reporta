@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase/client'
+import Sidebar from '@/components/Sidebar'
 
 type DataSource = {
   id: number
@@ -14,8 +15,46 @@ type DataSource = {
   created_at: string
 }
 
+const cell: React.CSSProperties = {
+  padding: '9px 14px',
+  fontSize: '12px',
+  borderBottom: '1px solid var(--border)',
+  color: 'var(--foreground)',
+  letterSpacing: '0.01em',
+}
+
+const headCell: React.CSSProperties = {
+  padding: '8px 14px',
+  fontSize: '11px',
+  fontWeight: 600,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase' as const,
+  color: 'var(--muted)',
+  background: 'var(--navy-800)',
+  borderBottom: '1px solid var(--border)',
+}
+
+// Helper to create a styled cell
+function sc(v: string | number, s: object): XLSX.CellObject {
+  return { v, s, t: typeof v === 'number' ? 'n' : 's' } as XLSX.CellObject
+}
+
+const NAV_FILL = { fgColor: { rgb: '0F1A2E' } }
+const NAV_800_FILL = { fgColor: { rgb: '1B2B4B' } }
+const AMBER_FILL = { fgColor: { rgb: 'D4A843' } }
+const ALT_FILL = { fgColor: { rgb: 'F0F4F8' } }
+const WHITE_FILL = { fgColor: { rgb: 'FFFFFF' } }
+const GRAY_FILL = { fgColor: { rgb: 'E2E8F0' } }
+
+const WHITE_BOLD = { font: { bold: true, color: { rgb: 'FFFFFF' } } }
+const NAVY_BOLD = { font: { bold: true, color: { rgb: '0F1A2E' } } }
+const GRAY_ITALIC = { font: { italic: true, color: { rgb: '718096' } } }
+const LABEL_STYLE = { font: { bold: true, color: { rgb: '4A5568' } } }
+const VALUE_STYLE = { font: { color: { rgb: '1A202C' } } }
+
 export default function NewReportPage() {
   const router = useRouter()
+  const [email, setEmail] = useState<string | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [sources, setSources] = useState<DataSource[]>([])
   const [selected, setSelected] = useState<Record<number, boolean>>({})
@@ -24,6 +63,7 @@ export default function NewReportPage() {
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [log, setLog] = useState<string[]>([])
 
   useEffect(() => {
     const init = async () => {
@@ -33,6 +73,7 @@ export default function NewReportPage() {
         return
       }
       setUserId(data.user.id)
+      setEmail(data.user.email ?? null)
 
       const { data: rows, error } = await supabase
         .from('data_sources')
@@ -49,6 +90,11 @@ export default function NewReportPage() {
     init()
   }, [router])
 
+  const logout = async () => {
+    await supabase.auth.signOut()
+    router.replace('/auth/login')
+  }
+
   const selectedIds = useMemo(
     () => sources.filter((s) => selected[s.id]).map((s) => s.id),
     [sources, selected]
@@ -56,6 +102,11 @@ export default function NewReportPage() {
 
   const toggle = (id: number) => {
     setSelected((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
+
+  const addLog = (line: string) => {
+    setLog((prev) => [...prev, `> ${line}`])
+    setStatus(line)
   }
 
   const downloadExcel = (wb: XLSX.WorkBook, filename: string) => {
@@ -74,6 +125,7 @@ export default function NewReportPage() {
   const generate = async () => {
     setError(null)
     setStatus(null)
+    setLog([])
 
     if (!userId) return
     if (selectedIds.length === 0) {
@@ -82,15 +134,15 @@ export default function NewReportPage() {
     }
 
     setLoading(true)
-    setStatus('Fetching selected files…')
+    addLog('Initializing report generation…')
 
     try {
-      // 1) Fetch each selected file and parse first sheet (basic MVP)
+      // 1) Fetch each selected file and parse first sheet
       const parsed: { source: DataSource; rows: any[] }[] = []
 
       for (const id of selectedIds) {
         const src = sources.find((s) => s.id === id)!
-        setStatus(`Fetching: ${src.name}`)
+        addLog(`Fetching: ${src.name}`)
 
         // Generate a short-lived signed URL from the storage path
         const { data: signedData, error: signedError } = await supabase.storage
@@ -118,31 +170,107 @@ export default function NewReportPage() {
           const rows = XLSX.utils.sheet_to_json(ws, { defval: '' }) as any[]
           parsed.push({ source: src, rows })
         }
+        addLog(`Parsed ${parsed[parsed.length - 1].rows.length} records from ${src.name}`)
       }
 
-      // 2) Build a workbook: Summary + one sheet per data source
-      setStatus('Building report…')
+      // 2) Build workbook
+      addLog('Building report workbook…')
       const wb = XLSX.utils.book_new()
+      const totalRecords = parsed.reduce((sum, p) => sum + p.rows.length, 0)
+      const generatedDate = new Date().toLocaleString()
 
-      const summaryRows = parsed.map((p) => ({
-        Source: p.source.name,
-        Type: p.source.file_type,
-        Rows: p.rows.length,
-        CreatedAt: p.source.created_at,
-      }))
-      const summaryWs = XLSX.utils.json_to_sheet(summaryRows)
-      XLSX.utils.book_append_sheet(wb, summaryWs, 'Summary')
+      // ── Cover Sheet ──
+      addLog('Writing cover sheet…')
+      const coverWs: XLSX.WorkSheet = {}
 
+      coverWs['A1'] = sc('REPORTA', { font: { bold: true, sz: 16, color: { rgb: 'FFFFFF' } }, fill: NAV_FILL, alignment: { horizontal: 'center' } })
+      coverWs['A2'] = sc('Financial Data Report', { font: { bold: true, color: { rgb: '0F1A2E' } }, fill: AMBER_FILL, alignment: { horizontal: 'center' } })
+      coverWs['A4'] = sc('Report Title:', LABEL_STYLE)
+      coverWs['B4'] = sc(title, VALUE_STYLE)
+      coverWs['A5'] = sc('Generated:', LABEL_STYLE)
+      coverWs['B5'] = sc(generatedDate, VALUE_STYLE)
+      coverWs['A6'] = sc('Data Sources:', LABEL_STYLE)
+      coverWs['B6'] = sc(parsed.length, VALUE_STYLE)
+      coverWs['A7'] = sc('Total Records:', LABEL_STYLE)
+      coverWs['B7'] = sc(totalRecords, VALUE_STYLE)
+      coverWs['A9'] = sc('CONFIDENTIAL – FOR INTERNAL USE ONLY', { ...GRAY_ITALIC, fill: GRAY_FILL, alignment: { horizontal: 'center' } })
+
+      coverWs['!ref'] = 'A1:B9'
+      coverWs['!merges'] = [
+        { s: { r: 0, c: 0 }, e: { r: 0, c: 1 } }, // A1:B1
+        { s: { r: 1, c: 0 }, e: { r: 1, c: 1 } }, // A2:B2
+        { s: { r: 8, c: 0 }, e: { r: 8, c: 1 } }, // A9:B9
+      ]
+      coverWs['!cols'] = [{ wch: 18 }, { wch: 40 }]
+      XLSX.utils.book_append_sheet(wb, coverWs, 'Cover')
+
+      // ── Executive Summary Sheet ──
+      addLog('Writing executive summary…')
+      const summaryWs: XLSX.WorkSheet = {}
+
+      // Header row
+      summaryWs['A1'] = sc('Source Name', { ...WHITE_BOLD, fill: NAV_800_FILL })
+      summaryWs['B1'] = sc('File Type', { ...WHITE_BOLD, fill: NAV_800_FILL })
+      summaryWs['C1'] = sc('Record Count', { ...WHITE_BOLD, fill: NAV_800_FILL })
+      summaryWs['D1'] = sc('Uploaded At', { ...WHITE_BOLD, fill: NAV_800_FILL })
+
+      parsed.forEach((p, i) => {
+        const row = i + 2
+        const fill = i % 2 === 0 ? WHITE_FILL : ALT_FILL
+        summaryWs[`A${row}`] = sc(p.source.name, { fill })
+        summaryWs[`B${row}`] = sc(p.source.file_type.toUpperCase(), { fill })
+        summaryWs[`C${row}`] = sc(p.rows.length, { fill, alignment: { horizontal: 'right' } })
+        summaryWs[`D${row}`] = sc(new Date(p.source.created_at).toLocaleString(), { fill })
+      })
+
+      // Total row
+      const totalRow = parsed.length + 2
+      const totalFill = { fgColor: { rgb: 'E2E8F0' } }
+      summaryWs[`A${totalRow}`] = sc('TOTAL', { font: { bold: true, color: { rgb: '1A202C' } }, fill: totalFill })
+      summaryWs[`B${totalRow}`] = sc('', { fill: totalFill })
+      summaryWs[`C${totalRow}`] = sc(totalRecords, { font: { bold: true, color: { rgb: '1A202C' } }, fill: totalFill, alignment: { horizontal: 'right' } })
+      summaryWs[`D${totalRow}`] = sc('', { fill: totalFill })
+
+      summaryWs['!ref'] = `A1:D${totalRow}`
+      summaryWs['!cols'] = [{ wch: 36 }, { wch: 12 }, { wch: 14 }, { wch: 22 }]
+      XLSX.utils.book_append_sheet(wb, summaryWs, 'Executive Summary')
+
+      // ── Data Sheets ──
       for (const p of parsed) {
-        const ws = XLSX.utils.json_to_sheet(p.rows.slice(0, 5000))
-        // Sheet names max 31 chars
+        addLog(`Writing sheet: ${p.source.name}`)
+        const rows = p.rows.slice(0, 5000)
+        const ws = XLSX.utils.json_to_sheet(rows)
+
+        // Style header row
+        const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1:A1')
+        for (let col = range.s.c; col <= range.e.c; col++) {
+          const addr = XLSX.utils.encode_cell({ r: 0, c: col })
+          if (ws[addr]) {
+            ws[addr].s = { ...WHITE_BOLD, fill: NAV_800_FILL }
+          }
+        }
+
+        // Style alternating data rows
+        for (let row = 1; row <= range.e.r; row++) {
+          const fill = row % 2 === 0 ? ALT_FILL : WHITE_FILL
+          for (let col = range.s.c; col <= range.e.c; col++) {
+            const addr = XLSX.utils.encode_cell({ r: row, c: col })
+            if (ws[addr]) {
+              ws[addr].s = { fill }
+            }
+          }
+        }
+
+        // Freeze top row
+        ws['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' }
+
         const sheetName = p.source.name.replace(/\.[^/.]+$/, '').slice(0, 31) || 'Data'
         XLSX.utils.book_append_sheet(wb, ws, sheetName)
       }
 
       // 3) Store a reports row
-      setStatus('Saving report metadata…')
-      const { data: reportRow, error: insertError } = await supabase
+      addLog('Saving report metadata…')
+      const { error: insertError } = await supabase
         .from('reports')
         .insert({ user_id: userId, title, format: 'excel', status: 'generated' })
         .select('id')
@@ -150,91 +278,236 @@ export default function NewReportPage() {
 
       if (insertError) throw insertError
 
-      setStatus('Downloading…')
+      addLog('Downloading workbook…')
       downloadExcel(wb, `${title.replace(/\s+/g, '_')}.xlsx`)
 
-      setStatus('Done ✅')
+      addLog('Done — report downloaded successfully.')
     } catch (err: any) {
       setError(err?.message ?? 'Failed to generate report')
+      addLog(`ERROR: ${err?.message ?? 'Failed to generate report'}`)
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <main className="min-h-screen p-6">
-      <div className="max-w-4xl mx-auto">
-        <header className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold">Generate report (Excel)</h1>
-            <p className="text-sm text-gray-600">Select uploaded sources and export a workbook.</p>
-          </div>
-          <Link className="border rounded px-3 py-2" href="/dashboard">
-            Back
-          </Link>
-        </header>
+    <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--background)' }}>
+      <Sidebar email={email} onLogout={logout} activePath="/reports/new" />
 
-        <div className="mt-8 grid gap-6">
-          <section className="border rounded p-4">
-            <label className="text-sm font-medium">Report title</label>
+      <main style={{ flex: 1, padding: '32px 36px', overflowY: 'auto' }}>
+        {/* Page header */}
+        <div style={{ marginBottom: '28px' }}>
+          <div
+            style={{
+              fontSize: '11px',
+              letterSpacing: '0.1em',
+              textTransform: 'uppercase',
+              color: 'var(--amber-500)',
+              marginBottom: '6px',
+            }}
+          >
+            Report Builder
+          </div>
+          <h1
+            style={{
+              fontSize: '22px',
+              fontWeight: 700,
+              color: 'var(--foreground)',
+              letterSpacing: '-0.02em',
+            }}
+          >
+            Generate Excel Report
+          </h1>
+          <p style={{ fontSize: '13px', color: 'var(--muted)', marginTop: '4px' }}>
+            Select data sources and export a formatted workbook.
+          </p>
+        </div>
+
+        <div style={{ display: 'grid', gap: '20px', maxWidth: '860px' }}>
+          {/* Report title input */}
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', padding: '20px 22px' }}>
+            <label style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted)', display: 'block', marginBottom: '10px' }}>
+              Report Title
+            </label>
             <input
-              className="mt-1 w-full border rounded px-3 py-2"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '9px 12px',
+                fontSize: '13px',
+                background: 'var(--navy-900)',
+                border: '1px solid var(--border)',
+                color: 'var(--foreground)',
+                outline: 'none',
+                fontFamily: 'inherit',
+                letterSpacing: '0.01em',
+              }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = 'var(--amber-500)')}
+              onBlur={(e) => (e.currentTarget.style.borderColor = 'var(--border)')}
             />
-          </section>
+          </div>
 
-          <section className="border rounded p-4">
-            <div className="flex items-center justify-between">
-              <h2 className="font-medium">Data sources</h2>
-              <Link className="text-blue-600 underline" href="/upload">
-                Upload more
+          {/* Data source selection */}
+          <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', padding: '20px 22px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted)' }}>
+                Data Sources
+              </div>
+              <Link href="/upload" style={{ fontSize: '11px', color: 'var(--amber-500)', textDecoration: 'none', letterSpacing: '0.04em' }}>
+                Upload more →
               </Link>
             </div>
 
             {sources.length === 0 ? (
-              <p className="text-sm text-gray-600 mt-3">No sources yet. Upload files first.</p>
+              <p style={{ fontSize: '13px', color: 'var(--muted)', padding: '16px 0' }}>
+                No sources yet.{' '}
+                <Link href="/upload" style={{ color: 'var(--amber-500)', textDecoration: 'none' }}>
+                  Upload files first
+                </Link>
+              </p>
             ) : (
-              <ul className="mt-3 space-y-2">
-                {sources.map((s) => (
-                  <li key={s.id} className="border rounded p-3">
-                    <label className="flex items-center gap-3">
-                      <input type="checkbox" checked={!!selected[s.id]} onChange={() => toggle(s.id)} />
-                      <div className="flex-1">
-                        <div className="font-medium">{s.name}</div>
-                        <div className="text-xs text-gray-600">
-                          {s.file_type} • {new Date(s.created_at).toLocaleString()}
-                        </div>
-                      </div>
-                    </label>
-                  </li>
-                ))}
-              </ul>
+              <div style={{ border: '1px solid var(--border)' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ ...headCell, width: '40px', textAlign: 'center' }}></th>
+                      <th style={{ ...headCell, textAlign: 'left' }}>File Name</th>
+                      <th style={{ ...headCell, textAlign: 'left' }}>Type</th>
+                      <th style={{ ...headCell, textAlign: 'right' }}>Uploaded</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sources.map((s, i) => (
+                      <tr
+                        key={s.id}
+                        onClick={() => toggle(s.id)}
+                        style={{
+                          background: selected[s.id]
+                            ? 'rgba(212,168,67,0.07)'
+                            : i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.02)',
+                          cursor: 'pointer',
+                          borderLeft: selected[s.id] ? '3px solid var(--amber-500)' : '3px solid transparent',
+                        }}
+                      >
+                        <td style={{ ...cell, textAlign: 'center', width: '40px' }}>
+                          <input
+                            type="checkbox"
+                            checked={!!selected[s.id]}
+                            onChange={() => toggle(s.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ accentColor: 'var(--amber-500)', cursor: 'pointer' }}
+                          />
+                        </td>
+                        <td style={{ ...cell, fontWeight: selected[s.id] ? 600 : 400 }}>{s.name}</td>
+                        <td style={cell}>
+                          <span
+                            style={{
+                              display: 'inline-block',
+                              padding: '2px 7px',
+                              fontSize: '10px',
+                              fontWeight: 600,
+                              letterSpacing: '0.06em',
+                              textTransform: 'uppercase',
+                              background: s.file_type === 'csv' ? 'rgba(72,187,120,0.15)' : 'rgba(99,179,237,0.15)',
+                              color: s.file_type === 'csv' ? 'var(--green-400)' : 'var(--blue-400)',
+                              border: `1px solid ${s.file_type === 'csv' ? 'rgba(72,187,120,0.3)' : 'rgba(99,179,237,0.3)'}`,
+                            }}
+                          >
+                            {s.file_type}
+                          </span>
+                        </td>
+                        <td style={{ ...cell, textAlign: 'right', fontFamily: 'monospace', color: 'var(--muted)', fontSize: '11px' }}>
+                          {new Date(s.created_at).toLocaleDateString()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
 
-            <div className="mt-4 flex items-center gap-3">
+            {/* Generate button */}
+            <div style={{ marginTop: '18px', display: 'flex', alignItems: 'center', gap: '16px' }}>
               <button
-                className="bg-blue-600 text-white rounded px-3 py-2 disabled:opacity-50"
                 onClick={generate}
                 disabled={loading || sources.length === 0 || selectedIds.length === 0}
+                style={{
+                  padding: '10px 28px',
+                  fontSize: '12px',
+                  fontWeight: 700,
+                  letterSpacing: '0.1em',
+                  textTransform: 'uppercase',
+                  background: loading || selectedIds.length === 0 ? 'var(--surface-2)' : 'var(--amber-500)',
+                  color: loading || selectedIds.length === 0 ? 'var(--muted)' : 'var(--navy-900)',
+                  border: `1px solid ${loading || selectedIds.length === 0 ? 'var(--border)' : 'transparent'}`,
+                  cursor: loading || selectedIds.length === 0 ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.15s',
+                }}
+                onMouseEnter={(e) => { if (!loading && selectedIds.length > 0) e.currentTarget.style.background = 'var(--amber-400)' }}
+                onMouseLeave={(e) => { if (!loading && selectedIds.length > 0) e.currentTarget.style.background = 'var(--amber-500)' }}
               >
-                {loading ? 'Working…' : `Generate (${selectedIds.length})`}
+                {loading ? 'Generating…' : `Generate (${selectedIds.length} source${selectedIds.length !== 1 ? 's' : ''})`}
               </button>
-              <div className="text-sm text-gray-600">{status ?? ''}</div>
+              {status && !loading && (
+                <span style={{ fontSize: '12px', color: 'var(--green-400)', letterSpacing: '0.02em' }}>
+                  {status}
+                </span>
+              )}
             </div>
 
-            {error && <p className="text-sm text-red-600 mt-3">{error}</p>}
-          </section>
+            {error && (
+              <div
+                style={{
+                  marginTop: '12px',
+                  padding: '10px 14px',
+                  background: 'rgba(252,129,129,0.1)',
+                  border: '1px solid rgba(252,129,129,0.3)',
+                  fontSize: '12px',
+                  color: 'var(--red-400)',
+                }}
+              >
+                {error}
+              </div>
+            )}
+          </div>
 
-          <section className="text-sm text-gray-600">
-            <p>Output workbook contains:</p>
-            <ul className="list-disc ml-5 mt-2">
-              <li>Summary sheet (rows count per source)</li>
-              <li>One sheet per source (up to 5000 rows each)</li>
-            </ul>
-          </section>
+          {/* Terminal log output */}
+          {log.length > 0 && (
+            <div style={{ background: 'var(--navy-900)', border: '1px solid var(--border)', padding: '16px 18px' }}>
+              <div style={{ fontSize: '10px', letterSpacing: '0.1em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '10px' }}>
+                Output Log
+              </div>
+              <div
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: '12px',
+                  lineHeight: '1.8',
+                  color: 'var(--slate-300)',
+                  maxHeight: '200px',
+                  overflowY: 'auto',
+                }}
+              >
+                {log.map((line, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      color: line.startsWith('> ERROR') ? 'var(--red-400)' : line.startsWith('> Done') ? 'var(--green-400)' : 'var(--slate-300)',
+                    }}
+                  >
+                    {line}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Info */}
+          <div style={{ fontSize: '12px', color: 'var(--muted)', borderTop: '1px solid var(--border)', paddingTop: '16px' }}>
+            Output workbook contains: Cover sheet · Executive Summary · One data sheet per source (max 5,000 rows each)
+          </div>
         </div>
-      </div>
-    </main>
+      </main>
+    </div>
   )
 }
