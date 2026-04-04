@@ -170,6 +170,44 @@ export default function DashboardPage() {
           ))}
         </div>
 
+        {/* Empty state */}
+        {!loading && sources.length === 0 && reports.length === 0 && (
+          <div
+            style={{
+              textAlign: 'center',
+              padding: '56px 24px',
+              border: '1px solid var(--border)',
+              background: 'var(--surface)',
+              marginBottom: '32px',
+            }}
+          >
+            <div style={{ fontSize: '48px', marginBottom: '14px' }}>📂</div>
+            <div style={{ fontSize: '15px', fontWeight: 600, color: 'var(--foreground)', marginBottom: '6px' }}>
+              No data yet. Start by uploading your first file.
+            </div>
+            <div style={{ fontSize: '13px', color: 'var(--muted)', marginBottom: '20px' }}>
+              Import CSV or XLSX files to generate your first report.
+            </div>
+            <Link
+              href="/upload"
+              style={{
+                display: 'inline-block',
+                padding: '10px 28px',
+                background: 'var(--amber-500)',
+                color: 'var(--navy-900)',
+                fontSize: '12px',
+                fontWeight: 700,
+                letterSpacing: '0.08em',
+                textTransform: 'uppercase',
+                textDecoration: 'none',
+                transition: 'background 0.15s',
+              }}
+            >
+              Upload Files
+            </Link>
+          </div>
+        )}
+
         {/* Action cards */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '32px' }}>
           <Link

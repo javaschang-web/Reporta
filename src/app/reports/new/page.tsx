@@ -52,6 +52,15 @@ const GRAY_ITALIC = { font: { italic: true, color: { rgb: '718096' } } }
 const LABEL_STYLE = { font: { bold: true, color: { rgb: '4A5568' } } }
 const VALUE_STYLE = { font: { color: { rgb: '1A202C' } } }
 
+function getLogColor(line: string): string {
+  const l = line.toLowerCase()
+  if (l.includes('error')) return '#EF4444'
+  if (l.includes('done') || l.includes('downloaded successfully')) return '#22C55E'
+  if (l.includes('saving') || l.includes('metadata')) return '#94A3B8'
+  if (l.includes('building') || l.includes('writing') || l.includes('downloading workbook')) return '#60A5FA'
+  return '#D4A843' // fetching / initializing / parsing = amber
+}
+
 export default function NewReportPage() {
   const router = useRouter()
   const [email, setEmail] = useState<string | null>(null)
@@ -109,6 +118,10 @@ export default function NewReportPage() {
     setStatus(line)
   }
 
+  const copyError = () => {
+    if (error) navigator.clipboard.writeText(error).catch(() => {})
+  }
+
   const downloadExcel = (wb: XLSX.WorkBook, filename: string) => {
     const out = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
     const blob = new Blob([out], {
@@ -152,7 +165,12 @@ export default function NewReportPage() {
           throw new Error(`Failed to get signed URL for ${src.name}`)
 
         const res = await fetch(signedData.signedUrl)
-        if (!res.ok) throw new Error(`Failed to fetch ${src.name}`)
+        if (!res.ok) {
+          if (res.status === 401 || res.status === 403) {
+            throw new Error('Access denied - please re-upload this file')
+          }
+          throw new Error(`Failed to fetch ${src.name}`)
+        }
 
         const buf = await res.arrayBuffer()
 
@@ -175,97 +193,104 @@ export default function NewReportPage() {
 
       // 2) Build workbook
       addLog('Building report workbook…')
-      const wb = XLSX.utils.book_new()
-      const totalRecords = parsed.reduce((sum, p) => sum + p.rows.length, 0)
-      const generatedDate = new Date().toLocaleString()
+      let wb: XLSX.WorkBook
+      try {
+        wb = XLSX.utils.book_new()
+        const totalRecords = parsed.reduce((sum, p) => sum + p.rows.length, 0)
+        const generatedDate = new Date().toLocaleString()
 
-      // ── Cover Sheet ──
-      addLog('Writing cover sheet…')
-      const coverWs: XLSX.WorkSheet = {}
+        // ── Cover Sheet ──
+        addLog('Writing cover sheet…')
+        const coverWs: XLSX.WorkSheet = {}
 
-      coverWs['A1'] = sc('REPORTA', { font: { bold: true, sz: 16, color: { rgb: 'FFFFFF' } }, fill: NAV_FILL, alignment: { horizontal: 'center' } })
-      coverWs['A2'] = sc('Financial Data Report', { font: { bold: true, color: { rgb: '0F1A2E' } }, fill: AMBER_FILL, alignment: { horizontal: 'center' } })
-      coverWs['A4'] = sc('Report Title:', LABEL_STYLE)
-      coverWs['B4'] = sc(title, VALUE_STYLE)
-      coverWs['A5'] = sc('Generated:', LABEL_STYLE)
-      coverWs['B5'] = sc(generatedDate, VALUE_STYLE)
-      coverWs['A6'] = sc('Data Sources:', LABEL_STYLE)
-      coverWs['B6'] = sc(parsed.length, VALUE_STYLE)
-      coverWs['A7'] = sc('Total Records:', LABEL_STYLE)
-      coverWs['B7'] = sc(totalRecords, VALUE_STYLE)
-      coverWs['A9'] = sc('CONFIDENTIAL – FOR INTERNAL USE ONLY', { ...GRAY_ITALIC, fill: GRAY_FILL, alignment: { horizontal: 'center' } })
+        coverWs['A1'] = sc('REPORTA', { font: { bold: true, sz: 16, color: { rgb: 'FFFFFF' } }, fill: NAV_FILL, alignment: { horizontal: 'center' } })
+        coverWs['A2'] = sc('Financial Data Report', { font: { bold: true, color: { rgb: '0F1A2E' } }, fill: AMBER_FILL, alignment: { horizontal: 'center' } })
+        coverWs['A4'] = sc('Report Title:', LABEL_STYLE)
+        coverWs['B4'] = sc(title, VALUE_STYLE)
+        coverWs['A5'] = sc('Generated:', LABEL_STYLE)
+        coverWs['B5'] = sc(generatedDate, VALUE_STYLE)
+        coverWs['A6'] = sc('Data Sources:', LABEL_STYLE)
+        coverWs['B6'] = sc(parsed.length, VALUE_STYLE)
+        coverWs['A7'] = sc('Total Records:', LABEL_STYLE)
+        coverWs['B7'] = sc(totalRecords, VALUE_STYLE)
+        coverWs['A9'] = sc('CONFIDENTIAL – FOR INTERNAL USE ONLY', { ...GRAY_ITALIC, fill: GRAY_FILL, alignment: { horizontal: 'center' } })
 
-      coverWs['!ref'] = 'A1:B9'
-      coverWs['!merges'] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 1 } }, // A1:B1
-        { s: { r: 1, c: 0 }, e: { r: 1, c: 1 } }, // A2:B2
-        { s: { r: 8, c: 0 }, e: { r: 8, c: 1 } }, // A9:B9
-      ]
-      coverWs['!cols'] = [{ wch: 18 }, { wch: 40 }]
-      XLSX.utils.book_append_sheet(wb, coverWs, 'Cover')
+        coverWs['!ref'] = 'A1:B9'
+        coverWs['!merges'] = [
+          { s: { r: 0, c: 0 }, e: { r: 0, c: 1 } }, // A1:B1
+          { s: { r: 1, c: 0 }, e: { r: 1, c: 1 } }, // A2:B2
+          { s: { r: 8, c: 0 }, e: { r: 8, c: 1 } }, // A9:B9
+        ]
+        coverWs['!cols'] = [{ wch: 18 }, { wch: 40 }]
+        XLSX.utils.book_append_sheet(wb, coverWs, 'Cover')
 
-      // ── Executive Summary Sheet ──
-      addLog('Writing executive summary…')
-      const summaryWs: XLSX.WorkSheet = {}
+        // ── Executive Summary Sheet ──
+        addLog('Writing executive summary…')
+        const summaryWs: XLSX.WorkSheet = {}
 
-      // Header row
-      summaryWs['A1'] = sc('Source Name', { ...WHITE_BOLD, fill: NAV_800_FILL })
-      summaryWs['B1'] = sc('File Type', { ...WHITE_BOLD, fill: NAV_800_FILL })
-      summaryWs['C1'] = sc('Record Count', { ...WHITE_BOLD, fill: NAV_800_FILL })
-      summaryWs['D1'] = sc('Uploaded At', { ...WHITE_BOLD, fill: NAV_800_FILL })
+        // Header row
+        summaryWs['A1'] = sc('Source Name', { ...WHITE_BOLD, fill: NAV_800_FILL })
+        summaryWs['B1'] = sc('File Type', { ...WHITE_BOLD, fill: NAV_800_FILL })
+        summaryWs['C1'] = sc('Record Count', { ...WHITE_BOLD, fill: NAV_800_FILL })
+        summaryWs['D1'] = sc('Uploaded At', { ...WHITE_BOLD, fill: NAV_800_FILL })
 
-      parsed.forEach((p, i) => {
-        const row = i + 2
-        const fill = i % 2 === 0 ? WHITE_FILL : ALT_FILL
-        summaryWs[`A${row}`] = sc(p.source.name, { fill })
-        summaryWs[`B${row}`] = sc(p.source.file_type.toUpperCase(), { fill })
-        summaryWs[`C${row}`] = sc(p.rows.length, { fill, alignment: { horizontal: 'right' } })
-        summaryWs[`D${row}`] = sc(new Date(p.source.created_at).toLocaleString(), { fill })
-      })
+        parsed.forEach((p, i) => {
+          const row = i + 2
+          const fill = i % 2 === 0 ? WHITE_FILL : ALT_FILL
+          summaryWs[`A${row}`] = sc(p.source.name, { fill })
+          summaryWs[`B${row}`] = sc(p.source.file_type.toUpperCase(), { fill })
+          summaryWs[`C${row}`] = sc(p.rows.length, { fill, alignment: { horizontal: 'right' } })
+          summaryWs[`D${row}`] = sc(new Date(p.source.created_at).toLocaleString(), { fill })
+        })
 
-      // Total row
-      const totalRow = parsed.length + 2
-      const totalFill = { fgColor: { rgb: 'E2E8F0' } }
-      summaryWs[`A${totalRow}`] = sc('TOTAL', { font: { bold: true, color: { rgb: '1A202C' } }, fill: totalFill })
-      summaryWs[`B${totalRow}`] = sc('', { fill: totalFill })
-      summaryWs[`C${totalRow}`] = sc(totalRecords, { font: { bold: true, color: { rgb: '1A202C' } }, fill: totalFill, alignment: { horizontal: 'right' } })
-      summaryWs[`D${totalRow}`] = sc('', { fill: totalFill })
+        // Total row
+        const totalRow = parsed.length + 2
+        const totalFill = { fgColor: { rgb: 'E2E8F0' } }
+        summaryWs[`A${totalRow}`] = sc('TOTAL', { font: { bold: true, color: { rgb: '1A202C' } }, fill: totalFill })
+        summaryWs[`B${totalRow}`] = sc('', { fill: totalFill })
+        summaryWs[`C${totalRow}`] = sc(totalRecords, { font: { bold: true, color: { rgb: '1A202C' } }, fill: totalFill, alignment: { horizontal: 'right' } })
+        summaryWs[`D${totalRow}`] = sc('', { fill: totalFill })
 
-      summaryWs['!ref'] = `A1:D${totalRow}`
-      summaryWs['!cols'] = [{ wch: 36 }, { wch: 12 }, { wch: 14 }, { wch: 22 }]
-      XLSX.utils.book_append_sheet(wb, summaryWs, 'Executive Summary')
+        summaryWs['!ref'] = `A1:D${totalRow}`
+        summaryWs['!cols'] = [{ wch: 36 }, { wch: 12 }, { wch: 14 }, { wch: 22 }]
+        XLSX.utils.book_append_sheet(wb, summaryWs, 'Executive Summary')
 
-      // ── Data Sheets ──
-      for (const p of parsed) {
-        addLog(`Writing sheet: ${p.source.name}`)
-        const rows = p.rows.slice(0, 5000)
-        const ws = XLSX.utils.json_to_sheet(rows)
+        // ── Data Sheets ──
+        for (const p of parsed) {
+          addLog(`Writing sheet: ${p.source.name}`)
+          const rows = p.rows.slice(0, 5000)
+          const ws = XLSX.utils.json_to_sheet(rows)
 
-        // Style header row
-        const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1:A1')
-        for (let col = range.s.c; col <= range.e.c; col++) {
-          const addr = XLSX.utils.encode_cell({ r: 0, c: col })
-          if (ws[addr]) {
-            ws[addr].s = { ...WHITE_BOLD, fill: NAV_800_FILL }
-          }
-        }
-
-        // Style alternating data rows
-        for (let row = 1; row <= range.e.r; row++) {
-          const fill = row % 2 === 0 ? ALT_FILL : WHITE_FILL
+          // Style header row
+          const range = XLSX.utils.decode_range(ws['!ref'] ?? 'A1:A1')
           for (let col = range.s.c; col <= range.e.c; col++) {
-            const addr = XLSX.utils.encode_cell({ r: row, c: col })
+            const addr = XLSX.utils.encode_cell({ r: 0, c: col })
             if (ws[addr]) {
-              ws[addr].s = { fill }
+              ws[addr].s = { ...WHITE_BOLD, fill: NAV_800_FILL }
             }
           }
+
+          // Style alternating data rows
+          for (let row = 1; row <= range.e.r; row++) {
+            const fill = row % 2 === 0 ? ALT_FILL : WHITE_FILL
+            for (let col = range.s.c; col <= range.e.c; col++) {
+              const addr = XLSX.utils.encode_cell({ r: row, c: col })
+              if (ws[addr]) {
+                ws[addr].s = { fill }
+              }
+            }
+          }
+
+          // Freeze top row
+          ws['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' }
+
+          const sheetName = p.source.name.replace(/\.[^/.]+$/, '').slice(0, 31) || 'Data'
+          XLSX.utils.book_append_sheet(wb, ws, sheetName)
         }
-
-        // Freeze top row
-        ws['!freeze'] = { xSplit: 0, ySplit: 1, topLeftCell: 'A2', activePane: 'bottomLeft', state: 'frozen' }
-
-        const sheetName = p.source.name.replace(/\.[^/.]+$/, '').slice(0, 31) || 'Data'
-        XLSX.utils.book_append_sheet(wb, ws, sheetName)
+      } catch (xlsxErr: any) {
+        throw new Error(
+          `Report generation failed: ${xlsxErr?.message ?? 'Unknown error'}. Your data was not lost.`
+        )
       }
 
       // 3) Store a reports row
@@ -465,9 +490,30 @@ export default function NewReportPage() {
                   border: '1px solid rgba(252,129,129,0.3)',
                   fontSize: '12px',
                   color: 'var(--red-400)',
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  gap: '12px',
                 }}
               >
-                {error}
+                <span>{error}</span>
+                <button
+                  onClick={copyError}
+                  style={{
+                    flexShrink: 0,
+                    fontSize: '10px',
+                    fontWeight: 600,
+                    letterSpacing: '0.06em',
+                    textTransform: 'uppercase',
+                    color: 'var(--red-400)',
+                    background: 'rgba(239,68,68,0.1)',
+                    border: '1px solid rgba(239,68,68,0.3)',
+                    padding: '2px 8px',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Copy error
+                </button>
               </div>
             )}
           </div>
@@ -483,18 +529,12 @@ export default function NewReportPage() {
                   fontFamily: 'monospace',
                   fontSize: '12px',
                   lineHeight: '1.8',
-                  color: 'var(--slate-300)',
                   maxHeight: '200px',
                   overflowY: 'auto',
                 }}
               >
                 {log.map((line, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      color: line.startsWith('> ERROR') ? 'var(--red-400)' : line.startsWith('> Done') ? 'var(--green-400)' : 'var(--slate-300)',
-                    }}
-                  >
+                  <div key={i} style={{ color: getLogColor(line) }}>
                     {line}
                   </div>
                 ))}

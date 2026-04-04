@@ -31,6 +31,18 @@ const headCell: React.CSSProperties = {
   borderBottom: '1px solid var(--border)',
 }
 
+function friendlyUploadError(err: any): string {
+  const msg: string = err?.message ?? ''
+  const code: string = String(err?.error ?? err?.statusCode ?? err?.code ?? '')
+  if (code === 'storage/object-too-large' || msg.includes('too large') || msg.includes('413')) {
+    return 'File too large (max 50MB)'
+  }
+  if (code === '409' || msg.includes('Duplicate') || msg.includes('duplicate') || msg.includes('already exists')) {
+    return 'File already exists, try renaming it'
+  }
+  return `Upload error: ${msg || 'Unknown error'}`
+}
+
 export default function UploadPage() {
   const router = useRouter()
   const [email, setEmail] = useState<string | null>(null)
@@ -38,6 +50,7 @@ export default function UploadPage() {
   const [files, setFiles] = useState<File[]>([])
   const [results, setResults] = useState<UploadResult[]>([])
   const [dragOver, setDragOver] = useState(false)
+  const [allFailedBanner, setAllFailedBanner] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -63,6 +76,7 @@ export default function UploadPage() {
   const pickFiles = (picked: File[]) => {
     setFiles(picked)
     setResults(picked.map((f) => ({ name: f.name, size: f.size, status: 'pending' as const })))
+    setAllFailedBanner(false)
   }
 
   const onPick = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -78,47 +92,86 @@ export default function UploadPage() {
     if (dropped.length > 0) pickFiles(dropped)
   }
 
+  const uploadOne = async (
+    file: File,
+    uid: string
+  ): Promise<{ status: 'done' | 'error'; message?: string }> => {
+    try {
+      const ext = file.name.toLowerCase().endsWith('.xlsx') ? 'xlsx' : 'csv'
+      const path = `${uid}/${Date.now()}-${file.name}`
+
+      const { error: storageError } = await supabase.storage
+        .from('uploads')
+        .upload(path, file, { upsert: false, contentType: file.type || undefined })
+      if (storageError) throw storageError
+
+      const { error: insertError } = await supabase.from('data_sources').insert({
+        user_id: uid,
+        name: file.name,
+        file_type: ext,
+        file_url: path,
+      })
+      if (insertError) throw insertError
+
+      return { status: 'done' }
+    } catch (err: any) {
+      return { status: 'error', message: friendlyUploadError(err) }
+    }
+  }
+
   const uploadAll = async () => {
     if (!userId) return
     if (files.length === 0) return
 
-    const next = [...results]
+    setAllFailedBanner(false)
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i]
-      next[i] = { ...next[i], status: 'uploading', message: undefined }
-      setResults([...next])
+    try {
+      const next = [...results]
 
-      try {
-        const ext = file.name.toLowerCase().endsWith('.xlsx') ? 'xlsx' : 'csv'
-        const path = `${userId}/${Date.now()}-${file.name}`
-
-        const { error: storageError } = await supabase.storage
-          .from('uploads')
-          .upload(path, file, { upsert: false, contentType: file.type || undefined })
-        if (storageError) throw storageError
-
-        // Store the storage path (not public URL) so we can generate signed URLs later
-        const { error: insertError } = await supabase.from('data_sources').insert({
-          user_id: userId,
-          name: file.name,
-          file_type: ext,
-          file_url: path,
-        })
-
-        if (insertError) throw insertError
-
-        next[i] = { ...next[i], status: 'done' }
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i]
+        next[i] = { ...next[i], status: 'uploading', message: undefined }
         setResults([...next])
-      } catch (err: any) {
-        next[i] = {
-          ...next[i],
-          status: 'error',
-          message: err?.message ?? 'Upload failed',
-        }
+
+        const result = await uploadOne(file, userId)
+        next[i] = { ...next[i], ...result }
         setResults([...next])
       }
+
+      if (next.length > 0 && next.every((r) => r.status === 'error')) {
+        setAllFailedBanner(true)
+      }
+    } catch (err: any) {
+      // Outer catch for unexpected errors (e.g. network failure before loop)
+      setResults((prev) =>
+        prev.map((r) =>
+          r.status === 'uploading' || r.status === 'pending'
+            ? { ...r, status: 'error', message: friendlyUploadError(err) }
+            : r
+        )
+      )
+      setAllFailedBanner(true)
     }
+  }
+
+  const retryOne = async (index: number) => {
+    if (!userId) return
+    const file = files[index]
+    if (!file) return
+
+    setAllFailedBanner(false)
+    setResults((prev) => {
+      const next = [...prev]
+      next[index] = { ...next[index], status: 'uploading', message: undefined }
+      return next
+    })
+
+    const result = await uploadOne(file, userId)
+    setResults((prev) => {
+      const next = [...prev]
+      next[index] = { ...next[index], ...result }
+      return next
+    })
   }
 
   const statusColor: Record<string, string> = {
@@ -140,6 +193,26 @@ export default function UploadPage() {
       <Sidebar email={email} onLogout={logout} activePath="/upload" />
 
       <main style={{ flex: 1, padding: '32px 36px', overflowY: 'auto' }}>
+        {/* All-failed banner */}
+        {allFailedBanner && (
+          <div
+            style={{
+              background: '#2D1515',
+              border: '1px solid rgba(239,68,68,0.4)',
+              color: '#F87171',
+              padding: '12px 16px',
+              fontSize: '13px',
+              marginBottom: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+            }}
+          >
+            <span>⚠</span>
+            <span>All uploads failed. Check file format and size, then retry.</span>
+          </div>
+        )}
+
         {/* Page header */}
         <div style={{ marginBottom: '28px' }}>
           <div
@@ -181,7 +254,7 @@ export default function UploadPage() {
             textAlign: 'center',
             cursor: 'pointer',
             transition: 'all 0.15s',
-            marginBottom: '24px',
+            marginBottom: '8px',
           }}
         >
           <div
@@ -207,6 +280,11 @@ export default function UploadPage() {
             onChange={onPick}
             style={{ display: 'none' }}
           />
+        </div>
+
+        {/* File size hint */}
+        <div style={{ fontSize: '11px', color: 'var(--muted)', marginBottom: '20px', paddingLeft: '2px' }}>
+          Supported: CSV, XLSX &bull; Max 50MB per file
         </div>
 
         {/* Upload button */}
@@ -257,8 +335,24 @@ export default function UploadPage() {
                       <td style={cell}>
                         <div style={{ fontWeight: 500 }}>{r.name}</div>
                         {r.message && (
-                          <div style={{ fontSize: '11px', color: 'var(--red-400)', marginTop: '2px' }}>
-                            {r.message}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px' }}>
+                            <span style={{ fontSize: '11px', color: 'var(--red-400)' }}>{r.message}</span>
+                            <button
+                              onClick={() => retryOne(i)}
+                              style={{
+                                fontSize: '10px',
+                                fontWeight: 600,
+                                letterSpacing: '0.06em',
+                                textTransform: 'uppercase',
+                                color: 'var(--amber-400)',
+                                background: 'rgba(212,168,67,0.1)',
+                                border: '1px solid rgba(212,168,67,0.3)',
+                                padding: '2px 7px',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              Retry
+                            </button>
                           </div>
                         )}
                       </td>
