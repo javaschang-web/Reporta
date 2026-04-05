@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import * as XLSX from 'xlsx'
@@ -61,7 +61,7 @@ function getLogColor(line: string): string {
   return '#D4A843' // fetching / initializing / parsing = amber
 }
 
-export default function NewReportPage() {
+function NewReportPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const datasetId = searchParams?.get('datasetId') ?? null
@@ -701,5 +701,13 @@ export default function NewReportPage() {
         </div>
       </main>
     </div>
+  )
+}
+
+export default function NewReportPage() {
+  return (
+    <Suspense fallback={<div style={{ minHeight: '100vh', background: 'var(--background)' }} />}>
+      <NewReportPageInner />
+    </Suspense>
   )
 }

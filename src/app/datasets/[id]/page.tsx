@@ -15,9 +15,9 @@ type Dataset = {
   created_at: string
 }
 
-type Record = {
+type DataRecord = {
   id: string
-  data: Record<string, unknown>
+  data: { [key: string]: unknown }
   recorded_at: string
 }
 
@@ -56,7 +56,7 @@ export default function DatasetDetailPage() {
 
   const [email, setEmail] = useState<string | null>(null)
   const [dataset, setDataset] = useState<Dataset | null>(null)
-  const [records, setRecords] = useState<Record[]>([])
+  const [records, setRecords] = useState<DataRecord[]>([])
   const [columns, setColumns] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -81,7 +81,7 @@ export default function DatasetDetailPage() {
 
       if (ds) setDataset(ds as Dataset)
 
-      const rows = (recs ?? []) as Record[]
+      const rows = (recs ?? []) as DataRecord[]
       setRecords(rows)
 
       if (rows.length > 0 && rows[0].data) {
