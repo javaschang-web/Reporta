@@ -50,8 +50,13 @@
 
 ## 📋 남은 작업 (우선순위 순)
 
+### 🔵 진행 중 — 데이터 레이크하우스 (2026-04-05)
+1. **Data Explorer 페이지** — `/datasets` 목록 + `/datasets/:id` 테이블 뷰 구현
+2. **n8n 워크플로우 완성** — HTTP Request Body 이슈 해결 후 자동 ingest 완성
+3. **리포트 연동** — Data Explorer에서 선택 → 리포트 생성 흐름
+
 ### 🟡 베타 단계
-1. **AI 분석 요약** — 업로드 데이터 기반 인사이트 자동 생성
+4. **AI 분석 요약** — 업로드 데이터 기반 인사이트 자동 생성
    - 결정 필요: OpenAI GPT-4o vs Claude API
    - 구현 위치: reports/new/page.tsx generate() 함수 내 또는 별도 /api/analyze 라우트
 2. **커스텀 도메인** — reporta.io 또는 원하는 도메인 Vercel 연결
@@ -63,6 +68,18 @@
 6. 팀 협업 기능 (멀티 유저 워크스페이스)
 7. ERP/Bloomberg API 직접 연동
 8. 이메일 인증 플로우 (Supabase Auth 이메일 확인 활성화)
+
+---
+
+## 🗃 데이터 레이크하우스 현황 (2026-04-05 추가)
+- **n8n:** v2.14.2 로컬 설치 완료 (`localhost:5678`)
+- **n8n API Key:** 발급 완료
+- **Supabase 신규 테이블:**
+  - `datasets` — 데이터셋 카탈로그 (user_id, name, source_type, schema_info, tags, row_count)
+  - `dataset_records` — 실제 데이터 (dataset_id, user_id, data JSONB, recorded_at)
+  - GIN 인덱스 + RLS 정책 설정 완료
+- **샘플 데이터:** Monthly Revenue 2026 Q1 (3행) 삽입 완료
+- **n8n 워크플로우:** `8UJ4DYD2sH9ZiNKF` (HTTP Request body 방식 미해결, PowerShell로 직접 삽입으로 우회)
 
 ---
 

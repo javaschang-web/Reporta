@@ -11,6 +11,7 @@ type Props = {
 const navLinks = [
   { href: '/dashboard', label: 'Dashboard', icon: '▦' },
   { href: '/upload', label: 'Upload', icon: '↑' },
+  { href: '/datasets', label: 'Data Explorer', icon: '⊟' },
   { href: '/reports/new', label: 'New Report', icon: '⊞' },
 ]
 
