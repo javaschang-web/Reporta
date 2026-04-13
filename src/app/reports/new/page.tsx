@@ -73,6 +73,13 @@ function NewReportPageInner() {
   const [selected, setSelected] = useState<Record<number, boolean>>({})
   const [datasetRows, setDatasetRows] = useState<Record<string, unknown>[]>([])
 
+  // AI Summary (queue-based)
+  const [aiFrom, setAiFrom] = useState('')
+  const [aiTo, setAiTo] = useState('')
+  const [aiStatus, setAiStatus] = useState<string | null>(null)
+  const [aiSummary, setAiSummary] = useState<string | null>(null)
+  const [aiBullets, setAiBullets] = useState<string[]>([])
+
   const [title, setTitle] = useState('Monthly Report')
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -92,14 +99,36 @@ function NewReportPageInner() {
       if (datasetId) {
         const { data: recs, error: recErr } = await supabase
           .from('dataset_records')
-          .select('data')
+          .select('data,recorded_at')
           .eq('dataset_id', datasetId)
           .order('recorded_at', { ascending: true })
         if (recErr) {
           setError(recErr.message)
           return
         }
-        setDatasetRows(((recs ?? []) as { data: Record<string, unknown> }[]).map((r) => r.data))
+        const mapped = ((recs ?? []) as { data: Record<string, unknown>; recorded_at: string }[])
+        setDatasetRows(mapped.map((r) => r.data))
+
+        // default date range = full available range
+        if (mapped.length > 0) {
+          const first = mapped[0].recorded_at.slice(0, 10)
+          const last = mapped[mapped.length - 1].recorded_at.slice(0, 10)
+          setAiFrom(first)
+          setAiTo(last)
+        }
+
+        // load latest insight for this dataset (optional)
+        const { data: insight } = await supabase
+          .from('dataset_insights')
+          .select('summary,bullets,from_date,to_date,created_at')
+          .eq('dataset_id', datasetId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (insight?.summary) {
+          setAiSummary(insight.summary)
+          setAiBullets((insight.bullets as string[]) ?? [])
+        }
       } else {
         const { data: rows, error } = await supabase
           .from('data_sources')
@@ -151,6 +180,35 @@ function NewReportPageInner() {
     a.download = filename
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  const requestAiSummary = async () => {
+    setAiStatus(null)
+    setError(null)
+
+    if (!userId || !datasetId) return
+    if (!aiFrom || !aiTo) {
+      setError('Please select a date range.')
+      return
+    }
+
+    setAiStatus('Submitting analysis request…')
+
+    const { error: reqErr } = await supabase.from('analysis_requests').insert({
+      user_id: userId,
+      dataset_id: datasetId,
+      from_date: aiFrom,
+      to_date: aiTo,
+      status: 'pending',
+    })
+
+    if (reqErr) {
+      setError(reqErr.message)
+      setAiStatus(null)
+      return
+    }
+
+    setAiStatus('Request submitted. Javas will process it within ~10 minutes.')
   }
 
   const generateFromDataset = async () => {
@@ -498,6 +556,86 @@ function NewReportPageInner() {
                   <span style={{ marginLeft: '12px', fontSize: '11px', color: 'var(--muted)' }}>
                     {datasetRows.length} records
                   </span>
+                </div>
+
+                {/* AI Summary */}
+                <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border)' }}>
+                  <div style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: '10px' }}>
+                    AI Summary
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span style={{ fontSize: '11px', color: 'var(--muted)' }}>From</span>
+                      <input
+                        type="date"
+                        value={aiFrom}
+                        onChange={(e) => setAiFrom(e.target.value)}
+                        style={{
+                          padding: '8px 10px',
+                          fontSize: '12px',
+                          background: 'var(--navy-900)',
+                          border: '1px solid var(--border)',
+                          color: 'var(--foreground)',
+                          outline: 'none',
+                        }}
+                      />
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      <span style={{ fontSize: '11px', color: 'var(--muted)' }}>To</span>
+                      <input
+                        type="date"
+                        value={aiTo}
+                        onChange={(e) => setAiTo(e.target.value)}
+                        style={{
+                          padding: '8px 10px',
+                          fontSize: '12px',
+                          background: 'var(--navy-900)',
+                          border: '1px solid var(--border)',
+                          color: 'var(--foreground)',
+                          outline: 'none',
+                        }}
+                      />
+                    </div>
+
+                    <button
+                      onClick={requestAiSummary}
+                      style={{
+                        padding: '10px 16px',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        letterSpacing: '0.08em',
+                        textTransform: 'uppercase',
+                        background: 'rgba(212,168,67,0.12)',
+                        color: 'var(--amber-500)',
+                        border: '1px solid rgba(212,168,67,0.25)',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Generate AI Summary
+                    </button>
+                  </div>
+
+                  {aiStatus && (
+                    <div style={{ marginTop: '10px', fontSize: '12px', color: 'var(--muted)' }}>
+                      {aiStatus}
+                    </div>
+                  )}
+
+                  {aiSummary && (
+                    <div style={{ marginTop: '12px', padding: '12px 14px', border: '1px solid var(--border)', background: 'rgba(255,255,255,0.02)' }}>
+                      <div style={{ fontSize: '12px', color: 'var(--foreground)', whiteSpace: 'pre-wrap', lineHeight: 1.55 }}>
+                        {aiSummary}
+                      </div>
+                      {aiBullets.length > 0 && (
+                        <ul style={{ marginTop: '10px', paddingLeft: '18px', color: 'var(--muted)', fontSize: '12px' }}>
+                          {aiBullets.map((b, idx) => (
+                            <li key={idx}>{b}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
