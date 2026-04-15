@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
 import Sidebar from '@/components/Sidebar'
@@ -77,6 +77,10 @@ export default function DatasetsPage() {
   const [email, setEmail] = useState<string | null>(null)
   const [datasets, setDatasets] = useState<Dataset[]>([])
   const [loading, setLoading] = useState(true)
+  const [showZeroRowsOnly, setShowZeroRowsOnly] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const init = async () => {
@@ -110,6 +114,82 @@ export default function DatasetsPage() {
     router.replace('/auth/login')
   }
 
+  const visibleDatasets = useMemo(() => {
+    if (!showZeroRowsOnly) return datasets
+    return datasets.filter((ds) => (ds.row_count ?? 0) === 0)
+  }, [datasets, showZeroRowsOnly])
+
+  const deleteDataset = async (dataset: Dataset) => {
+    const confirmed = window.confirm(`Delete dataset "${dataset.name}"? This will also remove its records.`)
+    if (!confirmed) return
+
+    setDeletingId(dataset.id)
+    setError(null)
+
+    const { error: recordsError } = await supabase
+      .from('dataset_records')
+      .delete()
+      .eq('dataset_id', dataset.id)
+
+    if (recordsError) {
+      setDeletingId(null)
+      setError(recordsError.message)
+      return
+    }
+
+    const { error: datasetError } = await supabase
+      .from('datasets')
+      .delete()
+      .eq('id', dataset.id)
+
+    setDeletingId(null)
+
+    if (datasetError) {
+      setError(datasetError.message)
+      return
+    }
+
+    setDatasets((prev) => prev.filter((ds) => ds.id !== dataset.id))
+  }
+
+  const zeroRowDatasets = datasets.filter((ds) => (ds.row_count ?? 0) === 0)
+
+  const deleteZeroRowDatasets = async () => {
+    if (zeroRowDatasets.length === 0) return
+    const confirmed = window.confirm(`Delete ${zeroRowDatasets.length} zero-row datasets?`)
+    if (!confirmed) return
+
+    setBulkDeleting(true)
+    setError(null)
+
+    for (const dataset of zeroRowDatasets) {
+      const { error: recordsError } = await supabase
+        .from('dataset_records')
+        .delete()
+        .eq('dataset_id', dataset.id)
+
+      if (recordsError) {
+        setBulkDeleting(false)
+        setError(recordsError.message)
+        return
+      }
+
+      const { error: datasetError } = await supabase
+        .from('datasets')
+        .delete()
+        .eq('id', dataset.id)
+
+      if (datasetError) {
+        setBulkDeleting(false)
+        setError(datasetError.message)
+        return
+      }
+    }
+
+    setDatasets((prev) => prev.filter((ds) => (ds.row_count ?? 0) !== 0))
+    setBulkDeleting(false)
+  }
+
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: 'var(--background)' }}>
       <Sidebar email={email} onLogout={logout} activePath="/datasets" />
@@ -140,6 +220,47 @@ export default function DatasetsPage() {
           </h1>
         </div>
 
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', gap: '12px', flexWrap: 'wrap' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--muted)' }}>
+            <input
+              type="checkbox"
+              checked={showZeroRowsOnly}
+              onChange={(e) => setShowZeroRowsOnly(e.target.checked)}
+              style={{ accentColor: 'var(--amber-500)', cursor: 'pointer' }}
+            />
+            Show only 0-row datasets
+          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <div style={{ fontSize: '12px', color: 'var(--muted)' }}>
+              {visibleDatasets.length} shown / {datasets.length} total
+            </div>
+            <button
+              onClick={() => void deleteZeroRowDatasets()}
+              disabled={bulkDeleting || zeroRowDatasets.length === 0}
+              style={{
+                padding: '7px 10px',
+                fontSize: '10px',
+                fontWeight: 700,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                background: 'rgba(239,68,68,0.1)',
+                color: 'var(--red-400)',
+                border: '1px solid rgba(239,68,68,0.3)',
+                cursor: bulkDeleting || zeroRowDatasets.length === 0 ? 'not-allowed' : 'pointer',
+                opacity: bulkDeleting || zeroRowDatasets.length === 0 ? 0.6 : 1,
+              }}
+            >
+              {bulkDeleting ? 'Deleting…' : `Delete all 0-row (${zeroRowDatasets.length})`}
+            </button>
+          </div>
+        </div>
+
+        {error && (
+          <div style={{ marginBottom: '12px', padding: '10px 14px', background: 'rgba(252,129,129,0.1)', border: '1px solid rgba(252,129,129,0.3)', fontSize: '12px', color: 'var(--red-400)' }}>
+            {error}
+          </div>
+        )}
+
         {/* Table */}
         <div style={{ border: '1px solid var(--border)', background: 'var(--surface)' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
@@ -150,23 +271,24 @@ export default function DatasetsPage() {
                 <th style={{ ...headCell, textAlign: 'right' }}>Rows</th>
                 <th style={headCell}>Tags</th>
                 <th style={{ ...headCell, textAlign: 'right' }}>Created</th>
+                <th style={{ ...headCell, textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={5} style={{ ...cell, color: 'var(--muted)', textAlign: 'center', padding: '32px' }}>
+                  <td colSpan={6} style={{ ...cell, color: 'var(--muted)', textAlign: 'center', padding: '32px' }}>
                     Loading…
                   </td>
                 </tr>
-              ) : datasets.length === 0 ? (
+              ) : visibleDatasets.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ ...cell, color: 'var(--muted)', textAlign: 'center', padding: '48px' }}>
-                    No datasets yet
+                  <td colSpan={6} style={{ ...cell, color: 'var(--muted)', textAlign: 'center', padding: '48px' }}>
+                    {showZeroRowsOnly ? 'No 0-row datasets' : 'No datasets yet'}
                   </td>
                 </tr>
               ) : (
-                datasets.map((ds, i) => (
+                visibleDatasets.map((ds, i) => (
                   <tr
                     key={ds.id}
                     onClick={() => router.push('/datasets/' + ds.id)}
@@ -224,6 +346,29 @@ export default function DatasetsPage() {
                       }}
                     >
                       {new Date(ds.created_at).toLocaleDateString()}
+                    </td>
+                    <td style={{ ...cell, textAlign: 'right' }}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          void deleteDataset(ds)
+                        }}
+                        disabled={deletingId === ds.id}
+                        style={{
+                          padding: '6px 10px',
+                          fontSize: '10px',
+                          fontWeight: 700,
+                          letterSpacing: '0.06em',
+                          textTransform: 'uppercase',
+                          background: 'rgba(239,68,68,0.1)',
+                          color: 'var(--red-400)',
+                          border: '1px solid rgba(239,68,68,0.3)',
+                          cursor: deletingId === ds.id ? 'not-allowed' : 'pointer',
+                          opacity: deletingId === ds.id ? 0.6 : 1,
+                        }}
+                      >
+                        {deletingId === ds.id ? 'Deleting…' : 'Delete'}
+                      </button>
                     </td>
                   </tr>
                 ))
